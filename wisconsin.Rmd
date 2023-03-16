@@ -1,0 +1,221 @@
+---
+title: "Example analysis of Wisconsin breast cancer data"
+author: "Clement Lee (Literate Programming Team)"
+date: "`r Sys.Date()`"
+output:
+  bookdown::pdf_document2:
+    number_sections: true
+    toc: false
+  html_document:
+    number_sections: true
+classoption: a4paper
+---
+
+# Introduction & exploratory data analysis
+This is an example analysis of the Wisconsin breast cancer data (available [here](https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data)) done in R. Before looking at the data, we load the packages required. We also set the theme of the plots using `theme_set()` in package `ggplot2`.
+
+```{r prelim, message = FALSE}
+library(tibble)
+library(dplyr)
+library(readr)
+library(ggplot2)
+theme_set(theme_bw(12))
+library(reshape)
+knitr::opts_chunk$set(fig.align = "center")
+```
+
+## Read data
+Now we read the data, available as a local csv file in the relative path (`breast-cancer-wisconsin/`) below. We use `head()` function to print the first few lines and show the structure of the data frame, `dim()` to list the dimensions, and `colnames()` (or `names()`) to list the column names. We also change the `diagnosis` variable to a factor.
+
+```{r read}
+data_df <- as_tibble(read.csv("breast-cancer-wisconsin/data.csv"))
+head(data_df)
+data_df$diagnosis <- as.factor(data_df$diagnosis)
+dim(data_df)
+colnames(data_df)
+```
+
+We use the following code to remove columns with missing values (`NA`), and use `head()` again to have a glimpse of the remaining columns.
+
+```{r remove_na}
+not_any_na <- function(x) all(!is.na(x))
+data_df <- data_df |> select(where(not_any_na))
+head(data_df)
+```
+
+## Basic summaries
+We count the number of Malignant and Benign tumours in the data, using the column `diagnosis`. We print such counts in the R output:
+
+```{r counts, results = "hold"}
+paste0("Number of Malignant tumours: ", table(data_df$diagnosis)["M"])
+paste0("Number of Benign tumours: ", table(data_df$diagnosis)["B"])
+```
+
+We can also plot these counts:
+```{r plot_counts}
+data_df |>
+  ggplot() +
+  geom_bar(aes(diagnosis, fill = diagnosis)) +
+  theme_bw(12) +
+  labs(title = "A count of benign and malignant tumours")
+```
+
+## Dropping variables
+Here's an example on how to drop some variables and showing the dimensions of the resultant data frame:
+```{r drop, results = "hold"}
+input_data <- data_df |> select(-id, -diagnosis)
+paste0("Sample size: ", nrow(input_data))
+paste0("Number of independent variables: ", ncol(input_data))
+```
+
+
+
+
+
+# Visualisations
+
+## Histogram & density
+We would like to look at the distribution of three different variables according to the tumour status. As the same kind of plot is required, a function is written for convenience.
+
+```{r plot_hist, fig.show = "hold"}
+plot_hist_den <- function(df = data_df, var, label) {
+  df |>
+    ggplot() +
+    geom_histogram(
+      aes({{ var }}, y = ..density.., fill = diagnosis), alpha = 0.5, bins = 40
+    ) +
+    geom_density(aes({{ var }}, col = diagnosis), lwd = 2) +
+    labs(title = paste0("Distribution of ", label), x = label)
+}
+
+plot_hist_den(data_df, area_worst, "Area worst")
+plot_hist_den(data_df, fractal_dimension_mean, "Fractal dimension mean")
+plot_hist_den(data_df, radius_se, "Radius se")
+```
+
+## Correlation & heatmaps
+**Heatmaps** provide an informative way to depict two-dimensional data of the kind we have before us. A *heatmap* is an image in which the colour of each pixel is determined by the corresponding value in the array of data.
+
+```{r plot-corr, fig.cap = "Correlation matrix"}
+corr_matrix <- cor(input_data)
+corr_matrix[!lower.tri(corr_matrix)] <- as.numeric(NA)
+corr_df <- corr_matrix |> reshape2::melt() |> as_tibble() |> filter(!is.na(value))
+corr_df |> 
+  ggplot() +
+  geom_tile(aes(Var2, Var1, fill = value)) +
+  scale_fill_gradient2(
+    low = "blue", high = "red", mid = "grey100", 
+    midpoint = 0.5, space = "Lab", 
+    name="Pearson\nCorrelation"
+  ) +
+  geom_text(aes(Var2, Var1, label = round(value, 2)), color = "black", size = 0.9) +
+  theme_void() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 1, size = 8, hjust = 1),
+    axis.text.y = element_text(hjust = 1, size = 8)
+  ) +
+  coord_fixed() +
+  scale_y_discrete(limits = rev(levels(corr_df$Var1)))
+```
+
+## Boxplots
+Another way of visualising the distribution of the three variables above, grouped by the tumuor type, is the box plots:
+
+```{r plot_boxplot, out.width = "80%"}
+data_df |>
+  ggplot() +
+  geom_boxplot(aes(diagnosis, area_worst)) +
+  labs(x = "Area worst")
+data_df |>
+  ggplot() +
+  geom_boxplot(aes(diagnosis, fractal_dimension_mean)) +
+  labs(x = "Fractal dimension mean")
+data_df |>
+  ggplot() +
+  geom_boxplot(aes(diagnosis, radius_se)) +
+  labs(x = "Radius se")
+```
+
+## Smoothed plots
+We suspect each of these three variables has an influence on the tumuor status, so we plot `diagnosis` against them with the fitted line according to logistic regression. Note the transformation of `diagnosis` to a probability, with `B` and `M` mapped to 0 and 1, respectively.
+
+```{r plot_smoothed, warning = FALSE, message = FALSE, out.width = "90%"}
+plot_logistic_smoothed <- function(df = data_df, var) {
+  data_df |>
+    ggplot(aes({{ var }}, as.numeric(diagnosis) - 1.0)) +
+    geom_point() +
+    geom_smooth(method = "glm", method.args = list(family = "binomial")) +
+    labs(y = "Probability")
+}
+plot_logistic_smoothed(var = area_worst)
+plot_logistic_smoothed(var = fractal_dimension_mean)
+plot_logistic_smoothed(var = radius_se)
+```
+
+
+
+
+
+# Statistical tests & numerical measures
+Next, we perform a two-sample `t`-test, without consider its validity (yet):
+```{r ttest, results = "hold"}
+area_worst_B <- data_df$area_worst[data_df$diagnosis == "B"]
+area_worst_M <- data_df$area_worst[data_df$diagnosis == "M"]
+ttest0 <- t.test(area_worst_B, area_worst_M, var.equal = TRUE)
+paste0("The t-statistic: ", ttest0$statistic)
+paste0("The p-value: ", ttest0$p.value, 6)
+```
+
+We can write a function to carry out the test more systematically:
+```{r ttest_functional}
+ttest_var <- function(df = data_df, var) {
+  vec_B <- df |> filter(diagnosis == "B") |> select({{ var }}) |> unlist()
+  vec_M <- df |> filter(diagnosis == "M") |> select({{ var }}) |> unlist()
+  ttest0 <- t.test(vec_B, vec_M, var.equal = TRUE)
+  print(paste0("Variable name: ", deparse(substitute(var))))
+  print(paste0("The t-statistic: ", ttest0$statistic))
+  print(paste0("The p-value: ", ttest0$p.value))
+}
+ttest_var(var = area_worst)
+ttest_var(var = fractal_dimension_mean)
+ttest_var(var = radius_se)
+```
+
+From Figure \@ref(fig:plot-corr), there are pairs of covariates / features that have very high correlation. Including them in a statistical / machine learning model will likely bring about multicollinearity issues. We shall therefore remove them, and print the names of the remaining columns.
+
+```{r drop_corr}
+corr_matrix <- cor(input_data) # overwriting previously defined corr_matrix
+corr_matrix[!upper.tri(corr_matrix)] <- as.numeric(NA)
+corr_threshold <- 0.95
+features_to_omit <- unique(which(corr_matrix > corr_threshold, arr.ind = TRUE)[, "col"])
+correlation_data <- input_data |> select(-all_of(features_to_omit))
+names(correlation_data)
+```
+
+
+
+
+
+# Machine learning
+
+## R equivalent of `train_test_split()` in `sklearn.model_selection`?
+
+## Confusion matrix
+Accuracy of test data
+
+## Classification report
+Classification report is used in machine learning to compute accuracy of a classification model from the values of the confusion matrix. In the classification report, precision is a measure of positive predictions.
+
+## ROC curve
+Plot the ROC curve, and calculate AUC score for the logistic regression model
+
+
+
+
+
+# For reproducibility (via containers?)
+For reproducibility purposes, the packages used are shown below:
+
+```{r session_info}
+sessionInfo()
+```
