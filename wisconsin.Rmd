@@ -19,8 +19,10 @@ library(tibble)
 library(dplyr)
 library(readr)
 library(ggplot2)
+library(caret)
+library(ROCR)
+library(pROC)
 theme_set(theme_bw(12))
-library(reshape)
 knitr::opts_chunk$set(fig.align = "center")
 ```
 
@@ -28,32 +30,32 @@ knitr::opts_chunk$set(fig.align = "center")
 Now we read the data, available as a local csv file in the relative path (`breast-cancer-wisconsin/`) below. We use `head()` function to print the first few lines and show the structure of the data frame, `dim()` to list the dimensions, and `colnames()` (or `names()`) to list the column names. We also change the `diagnosis` variable to a factor.
 
 ```{r read}
-data_df <- as_tibble(read.csv("breast-cancer-wisconsin/data.csv"))
-head(data_df)
-data_df$diagnosis <- as.factor(data_df$diagnosis)
-dim(data_df)
-colnames(data_df)
+cancer_data <- as_tibble(read.csv("breast-cancer-wisconsin/data.csv"))
+head(cancer_data)
+cancer_data$diagnosis <- as.factor(cancer_data$diagnosis)
+dim(cancer_data)
+colnames(cancer_data)
 ```
 
 We use the following code to remove columns with missing values (`NA`), and use `head()` again to have a glimpse of the remaining columns.
 
 ```{r remove_na}
 not_any_na <- function(x) all(!is.na(x))
-data_df <- data_df |> select(where(not_any_na))
-head(data_df)
+cancer_data <- cancer_data |> select(where(not_any_na))
+head(cancer_data)
 ```
 
 ## Basic summaries
 We count the number of Malignant and Benign tumours in the data, using the column `diagnosis`. We print such counts in the R output:
 
 ```{r counts, results = "hold"}
-paste0("Number of Malignant tumours: ", table(data_df$diagnosis)["M"])
-paste0("Number of Benign tumours: ", table(data_df$diagnosis)["B"])
+paste0("Number of Malignant tumours: ", table(cancer_data$diagnosis)["M"])
+paste0("Number of Benign tumours: ", table(cancer_data$diagnosis)["B"])
 ```
 
 We can also plot these counts:
 ```{r plot_counts}
-data_df |>
+cancer_data |>
   ggplot() +
   geom_bar(aes(diagnosis, fill = diagnosis)) +
   theme_bw(12) +
@@ -63,7 +65,7 @@ data_df |>
 ## Dropping variables
 Here's an example on how to drop some variables and showing the dimensions of the resultant data frame:
 ```{r drop, results = "hold"}
-input_data <- data_df |> select(-id, -diagnosis)
+input_data <- cancer_data |> select(-id, -diagnosis)
 paste0("Sample size: ", nrow(input_data))
 paste0("Number of independent variables: ", ncol(input_data))
 ```
@@ -78,7 +80,7 @@ paste0("Number of independent variables: ", ncol(input_data))
 We would like to look at the distribution of three different variables according to the tumour status. As the same kind of plot is required, a function is written for convenience.
 
 ```{r plot_hist, fig.show = "hold"}
-plot_hist_den <- function(df = data_df, var, label) {
+plot_hist_den <- function(df = cancer_data, var, label) {
   df |>
     ggplot() +
     geom_histogram(
@@ -88,9 +90,9 @@ plot_hist_den <- function(df = data_df, var, label) {
     labs(title = paste0("Distribution of ", label), x = label)
 }
 
-plot_hist_den(data_df, area_worst, "Area worst")
-plot_hist_den(data_df, fractal_dimension_mean, "Fractal dimension mean")
-plot_hist_den(data_df, radius_se, "Radius se")
+plot_hist_den(cancer_data, area_worst, "Area worst")
+plot_hist_den(cancer_data, fractal_dimension_mean, "Fractal dimension mean")
+plot_hist_den(cancer_data, radius_se, "Radius se")
 ```
 
 ## Correlation & heatmaps
@@ -122,15 +124,15 @@ corr_df |>
 Another way of visualising the distribution of the three variables above, grouped by the tumuor type, is the box plots:
 
 ```{r plot_boxplot, out.width = "80%"}
-data_df |>
+cancer_data |>
   ggplot() +
   geom_boxplot(aes(diagnosis, area_worst)) +
   labs(x = "Area worst")
-data_df |>
+cancer_data |>
   ggplot() +
   geom_boxplot(aes(diagnosis, fractal_dimension_mean)) +
   labs(x = "Fractal dimension mean")
-data_df |>
+cancer_data |>
   ggplot() +
   geom_boxplot(aes(diagnosis, radius_se)) +
   labs(x = "Radius se")
@@ -140,8 +142,8 @@ data_df |>
 We suspect each of these three variables has an influence on the tumuor status, so we plot `diagnosis` against them with the fitted line according to logistic regression. Note the transformation of `diagnosis` to a probability, with `B` and `M` mapped to 0 and 1, respectively.
 
 ```{r plot_smoothed, warning = FALSE, message = FALSE, out.width = "90%"}
-plot_logistic_smoothed <- function(df = data_df, var) {
-  data_df |>
+plot_logistic_smoothed <- function(df = cancer_data, var) {
+  cancer_data |>
     ggplot(aes({{ var }}, as.numeric(diagnosis) - 1.0)) +
     geom_point() +
     geom_smooth(method = "glm", method.args = list(family = "binomial")) +
@@ -159,8 +161,8 @@ plot_logistic_smoothed(var = radius_se)
 # Statistical tests & numerical measures
 Next, we perform a two-sample `t`-test, without consider its validity (yet):
 ```{r ttest, results = "hold"}
-area_worst_B <- data_df$area_worst[data_df$diagnosis == "B"]
-area_worst_M <- data_df$area_worst[data_df$diagnosis == "M"]
+area_worst_B <- cancer_data$area_worst[cancer_data$diagnosis == "B"]
+area_worst_M <- cancer_data$area_worst[cancer_data$diagnosis == "M"]
 ttest0 <- t.test(area_worst_B, area_worst_M, var.equal = TRUE)
 paste0("The t-statistic: ", ttest0$statistic)
 paste0("The p-value: ", ttest0$p.value, 6)
@@ -168,7 +170,7 @@ paste0("The p-value: ", ttest0$p.value, 6)
 
 We can write a function to carry out the test more systematically:
 ```{r ttest_functional}
-ttest_var <- function(df = data_df, var) {
+ttest_var <- function(df = cancer_data, var) {
   vec_B <- df |> filter(diagnosis == "B") |> select({{ var }}) |> unlist()
   vec_M <- df |> filter(diagnosis == "M") |> select({{ var }}) |> unlist()
   ttest0 <- t.test(vec_B, vec_M, var.equal = TRUE)
@@ -198,17 +200,100 @@ names(correlation_data)
 
 # Machine learning
 
-## R equivalent of `train_test_split()` in `sklearn.model_selection`?
+## R equivalent of `train_test_split()` in `sklearn.model_selection`
+
+```{r cross_validation, warning = FALSE}
+set.seed(1234)
+df_index <-
+  createDataPartition(
+    cancer_data$diagnosis,
+    times = 1,
+    p = 0.80,
+    list = FALSE
+  )
+cancer_train <- cancer_data[df_index, ]
+cancer_test <- cancer_data[-df_index, ]
+tr_control <-
+  trainControl(
+    method = "cv",
+    number = 15,
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary
+  )
+logRegress <-
+  train(
+    diagnosis ~ .,
+    data = cancer_data,
+    method = 'glm',
+    metric = 'ROC',
+    preProcess = c('scale', 'center'),
+    trControl = tr_control,
+    maxit = 100
+  )
+pred_y <- predict(logRegress, select(cancer_test, -diagnosis))
+```
 
 ## Confusion matrix
-Accuracy of test data
+
+```{r confusion_matrix}
+cm <- confusionMatrix(pred_y, cancer_test$diagnosis, positive = 'M')
+cm
+TN <- cm$table[1,1]
+TP <- cm$table[2,2]
+FN <- cm$table[2,1]
+FP <- cm$table[1,2]
+paste0("Accuracy on the test data: ", (TP + TN) / (TP + TN + FN + FP))
+```
 
 ## Classification report
-Classification report is used in machine learning to compute accuracy of a classification model from the values of the confusion matrix. In the classification report, precision is a measure of positive predictions.
+Classification report is used in machine learning to compute accuracy of a classification model from the values of the confusion matrix. In the classification report, precision is a measure of positive predictions. A few metrics are presented here:
+
+```{r classification_report}
+sensitivity(pred_y, cancer_test$diagnosis, positive = "M")
+specificity(pred_y, cancer_test$diagnosis, positive = "M")
+posPredValue(pred_y, cancer_test$diagnosis, positive = "M")
+negPredValue(pred_y, cancer_test$diagnosis, positive = "M")
+precision(pred_y, cancer_test$diagnosis, positive = "M")
+recall(pred_y, cancer_test$diagnosis, positive = "M")
+```
 
 ## ROC curve
-Plot the ROC curve, and calculate AUC score for the logistic regression model
+We first calculate AUC score for the logistic regression model:
 
+```{r auc}
+pred_y_num <- as.numeric(pred_y)
+test_diagnosis_num <- as.numeric(cancer_test$diagnosis)
+auc_cancer <- auc(pred_y_num, test_diagnosis_num)
+```
+
+Then we calculate and plot the ROC curve:
+
+```{r roc}
+pred_roc <- prediction(pred_y_num, test_diagnosis_num)
+roc_perf <- performance(pred_roc, measure = "tpr", x.measure = "fpr")
+roc_obj <- roc(pred_y_num, test_diagnosis_num)
+ci_auc <- ci.auc(roc_obj)
+ci_lower <- round(ci_auc[1], 2)
+ci_upper <- round(ci_auc[3], 2)
+label_annotate <-
+  glue::glue("AUC = {round(auc_cancer, 2)} with 95% CI = ({ci_lower} - {ci_upper})")
+
+ggroc(roc_obj, colour = "lightblue", size = 2, legacy.axes = TRUE) +
+  geom_segment(
+    aes(x = 0, xend = 1, y = 0, yend = 1),
+    colour = "grey",
+    linetype = "dashed"
+  ) +
+  annotate("text", x = 0.7, y = 0.05, label = label_annotate) +
+  labs(
+    title = "ROC Curve",
+    subtitle = paste0("(AUC = ", auc_cancer |> round(4), ")"),
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    caption = "Source: Wisconsin Breast Cancer Dataset"
+  ) +
+  theme_minimal()
+```
 
 
 
