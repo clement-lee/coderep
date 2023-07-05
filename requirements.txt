@@ -1,0 +1,7 @@
+tibble
+dplyr
+ggplot2
+caret
+ROCR
+pROC
+jquerylib (for html via rmarkdown)
