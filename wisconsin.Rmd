@@ -51,7 +51,7 @@ head(cancer_data)
 
 ## Basic summaries
 Using the column `diagnosis` in the data, we count that there are `r sum(cancer_data$diagnosis == "M")` Malignant tumours and `r sum(cancer_data$diagnosis == "B")` Benign tumours. We can also plot these counts:
-```{r plot-counts, fig.cap = "Counts of data according to tumour status", fig.align = "center", out.width = "70%", fig.asp = 0.65}
+```{r plot-counts, fig.cap = "Counts of data according to tumour status", fig.align = "center", out.width = "70%", fig.asp = 0.65, message = FALSE}
 plot_count(cancer_data)
 ```
 
@@ -65,10 +65,17 @@ To understand the data better, it is useful to look at, for each tumour status, 
 ## Histogram & density
 We first visualise such distributions using histograms and density plots in Figure \@ref(fig:plot-hist). As the same kind of plot is required, a function is written for convenience.
 
-```{r plot-hist, fig.show = "hold", fig.cap = "Histogram and density of three features according to tumour status", fig.align = "center", out.width = "70%", fig.asp = 0.65}
-plot_hist_den(cancer_data, var = area_worst, label = "Area worst")
-plot_hist_den(cancer_data, var = fractal_dimension_mean, label = "Fractal dimension mean")
-plot_hist_den(cancer_data, var = radius_se, label = "Radius se")
+```{r plot-hist, fig.show = "hold", fig.cap = "Histogram and density of three features according to tumour status", fig.align = "center", out.width = "70%", fig.asp = 0.65, message = FALSE}
+plot_hist_den(
+  cancer_data, var = area_worst, label = "Area worst", filename = "hist_area.png"
+)
+plot_hist_den(
+  cancer_data, var = fractal_dimension_mean, label = "Fractal dimension mean",
+  filename = "hist_frac.png"
+)
+plot_hist_den(
+  cancer_data, var = radius_se, label = "Radius se", filename = "hist_radius.png"
+)
 ```
 
 It can be seen that the distribution of each of these three features is different for the tumour status. Therefore, they might be useful or, more precisely, significant when predicting whether the cancer is benign or malignant.
@@ -76,19 +83,32 @@ It can be seen that the distribution of each of these three features is differen
 ## Boxplots
 Another way of visualising the distribution of the three variables above, grouped by the tumuor status, is the box plots in Figure \@ref(fig:plot-boxplot):
 
-```{r plot-boxplot, fig.cap = "Boxplot of three features according to tumour status", fig.show = "hold", fig.pos = "!h", fig.align = "center", out.width = "70%", fig.asp = 0.65}
-plot_boxplot(cancer_data, var = area_worst, label = "Area worst")
-plot_boxplot(cancer_data, var = fractal_dimension_mean, label = "Fractal dimension mean")
-plot_boxplot(cancer_data, var = radius_se, label = "Radius se")
+```{r plot-boxplot, fig.cap = "Boxplot of three features according to tumour status", fig.show = "hold", fig.pos = "!h", fig.align = "center", out.width = "70%", fig.asp = 0.65, message = FALSE}
+plot_boxplot(
+  cancer_data, var = area_worst, label = "Area worst", filename = "boxplot_area.png"
+)
+plot_boxplot(
+  cancer_data, var = fractal_dimension_mean, label = "Fractal dimension mean",
+  filename = "boxplot_frac.png"
+)
+plot_boxplot(
+  cancer_data, var = radius_se, label = "Radius se", filename = "boxplot_radius.png"
+)
 ```
 
 ## Smoothed plots
 We suspect each of these three variables has an influence on the tumuor status, so we plot `diagnosis` against each of them in Figure \@ref(fig:plot-smoothed), with the fitted line according to logistic regression. Note the transformation of `diagnosis` to a probability, with `B` and `M` mapped to 0 and 1, respectively.
 
-```{r plot-smoothed, warning = FALSE, message = FALSE, fig.cap = "Tumour status against each feature with fitted logistic regression line", fig.show = "hold", fig.pos = "!h", fig.asp = 0.5, fig.align = "center", out.width = "70%", fig.asp = 0.65}
-plot_logistic_smoothed(cancer_data, var = area_worst)
-plot_logistic_smoothed(cancer_data, var = fractal_dimension_mean)
-plot_logistic_smoothed(cancer_data, var = radius_se)
+```{r plot-smoothed, warning = FALSE, message = FALSE, fig.cap = "Tumour status against each feature with fitted logistic regression line", fig.show = "hold", fig.pos = "!h", fig.asp = 0.5, fig.align = "center", out.width = "70%", fig.asp = 0.65, message = FALSE}
+plot_logistic_smoothed(
+  cancer_data, var = area_worst, filename = "smoothed_area.png"
+)
+plot_logistic_smoothed(
+  cancer_data, var = fractal_dimension_mean, filename = "smoothed_frac.png"
+)
+plot_logistic_smoothed(
+  cancer_data, var = radius_se, filename = "smoothed_radius.png"
+)
 ```
 ## Statistical tests
 We can perform two-sample *t*-test to find out if there is a significant difference in the distribution of a feature according to the tumour status.
@@ -127,8 +147,8 @@ input_data <- cancer_data |> select(-id, -diagnosis)
 
 **Heatmaps** provide an informative way to depict two-dimensional data of the kind we have before us. Therefore, using the resultant data frame (of `r nrow(input_data)` rows and `r ncol(input_data)` columns), we plot a heatmap in which the colour of each raster is determined by the Pearson correlation of each corresponding pair of features.
 
-```{r plot-corr, fig.cap = "Correlation matrix heatmap", out.width = "80%", fig.align = "center", fig.asp = 0.65}
-plot_heatmap(input_data)
+```{r plot-corr, fig.cap = "Correlation matrix heatmap", out.width = "80%", fig.align = "center", fig.asp = 0.65, message = FALSE}
+plot_heatmap(input_data, filename = "heatmap.png")
 ```
 
 We proceed to remove those pairs with high correlations, and print the names of the remaining columns.
@@ -188,8 +208,8 @@ auc_cancer <- auc(pred_y_num, test_diagnosis_num)
 
 Then we calculate and plot the ROC curve in Figure \@ref(fig:roc):
 
-```{r roc, fig.cap = "ROC curve for the logistic regression model. Source: Wisconsin Breast Cancer Dataset.", fig.align = "center", out.width = "70%", fig.asp = 0.65}
-plot_roc(pred_y, cancer_test$diagnosis)
+```{r roc, fig.cap = "ROC curve for the logistic regression model. Source: Wisconsin Breast Cancer Dataset.", fig.align = "center", out.width = "70%", fig.asp = 0.65, message = FALSE}
+plot_roc(pred_y, cancer_test$diagnosis, filename = "roc.png")
 ```
 
 
